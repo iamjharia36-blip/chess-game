@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Chess Master Game</title>
+    
+    <!-- Chessboard CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css">
+    
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f2f5;
+            padding-top: 50px;
+        }
+        #myBoard {
+            width: 400px;
+            margin: 20px auto;
+        }
+        /* Notification banner style for check, checkmate, and turns */
+        #gameStatus {
+            margin-top: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            height: 30px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>My Online Chess Master Game</h1>
+    <p>Drag the pieces! Play with classic rules and status alerts.</p>
+
+    <!-- The chess board container -->
+    <div id="myBoard"></div>
+
+    <!-- The status message box that notifies players about turns, check, and checkmate -->
+    <div id="gameStatus">Game in progress... Turn: White</div>
+
+    <!-- 1. jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <!-- 2. Chessboard.js -->
+    <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+    
+    <!-- 3. Chess.js (Rules engine) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    
+    <!-- 4. Socket.io -->
+    <script src="/socket.io/socket.io.js"></script>
+    
+    <!-- 5. Game Logic Script with Check/Checkmate notifications -->
+    <script>
+        var socket = io();
+        var game = new Chess();
+        var board = null;
+        var statusEl = $('#gameStatus');
+
+        function updateStatus () {
+            var status = '';
+            var moveColor = (game.turn() === 'w') ? 'White' : 'Black';
+
+            // Check for Checkmate
+            if (game.in_checkmate()) {
+                status = 'Game over, ' + moveColor + ' is in checkmate!';
+            } 
+            // Check for Stalemate
+            else if (game.in_stalemate()) {
+                status = 'Game over, drawn position (stalemate)!';
+            } 
+            // Check for general draws or game over conditions
+            else if (game.game_over()) {
+                status = 'Game over!';
+            } 
+            else {
+                status = moveColor + "'s turn";
+
+                // Check if the current player's king is under check
+                if (game.in_check()) {
+                    status += ' (' + moveColor + ' is in CHECK!)';
+                }
+            }
+
+            statusEl.text(status);
+        }
+
+        function onDragStart (source, piece, position, orientation) {
+            if (game.game_over()) return false;
+            if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+                (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
+                return false;
+            }
+        }
+
+        function onDrop (source, target) {
+            var move = game.move({
+                from: source,
+                to: target,
+                promotion: 'q'
+            });
+
+            if (move === null) return 'snap';
+
+            socket.emit('playerMove', { source: source, target: target });
+            updateStatus();
+        }
+
+        function onSnapEnd () {
+            board.position(game.fen());
+        }
+
+        var config = {
+            draggable: true,
+            position: 'start',
+            pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png',
+            onDragStart: onDragStart,
+            onDrop: onDrop,
+            onSnapEnd: onSnapEnd
+        };
+
+        board = Chessboard('myBoard', config);
+        updateStatus();
+
+        socket.on('serverMove', function (moveData) {
+            game.move({
+                from: moveData.source,
+                to: moveData.target,
+                promotion: 'q'
+            });
+            board.position(game.fen());
+            updateStatus();
+        });
+    </script>
+
+</body>
+</html>
